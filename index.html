@@ -287,7 +287,7 @@
   /* ---------- DROP ZONE ---------- */
   .dropzone {
     border: 2px dashed #CFC6F2; border-radius: 26px;
-    background: var(--card); box-shadow: var(--shadow);
+    background: var(--dz-bg, var(--card)); color: var(--dz-fg, var(--text)); box-shadow: var(--shadow);
     min-height: 250px; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 12px;
     cursor: pointer; transition: border-color .25s, box-shadow .25s, background .25s;
@@ -623,6 +623,21 @@
   body.theme-black [style*="rgba(0,255,136"] { background: #1D3A33 !important; }
   body.theme-black .view-switch-btn.active, body.theme-black .ptab.active, body.theme-black .filter-btn.active { color: #fff; }
 
+
+  /* ---------- PALETTE PICKER (Settings) ---------- */
+  .dropzone .dz-text h3 { color: var(--dz-fg, var(--text)); }
+  .dropzone .dz-text p, .dropzone .dz-icon p, .dropzone [style*="var(--muted)"] { color: var(--dz-muted, var(--muted)) !important; }
+  .swatch-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 9px; margin-top: 10px; }
+  .swatch { aspect-ratio: 1; border-radius: 50%; border: 3px solid #fff; background: var(--sw); box-shadow: 0 0 0 1px var(--border); cursor: pointer; padding: 0; transition: transform .15s, box-shadow .15s; }
+  .swatch:hover { transform: scale(1.12); }
+  .swatch.active { box-shadow: 0 0 0 3px var(--lav); transform: scale(1.08); }
+  .swatch.sw-light { box-shadow: 0 0 0 1px #CFC6F2; }
+  .swatch.sw-light.active { box-shadow: 0 0 0 3px var(--lav); }
+  .pal-tools { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .pal-tools label { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .pal-tools .btn { padding: 7px 16px; font-size: 12.5px; }
+  .pal-hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+  @media (max-width: 768px) { .swatch-grid { grid-template-columns: repeat(6, 1fr); } }
 </style>
 </head>
 <body>
@@ -704,8 +719,8 @@
         <div class="toggle on" id="catToggle" onclick="this.classList.toggle('on')"></div>
       </div>
       <div class="slider-wrap" style="margin-top:10px;">
-        <div class="slider-header"><span>Title Length</span><span id="titleVal">60 chars</span></div>
-        <input type="range" min="30" max="200" value="60" oninput="document.getElementById('titleVal').textContent=this.value+' chars'">
+        <div class="slider-header"><span>Title Length</span><span id="titleVal">60 → 51</span></div>
+        <input type="range" min="30" max="200" value="60" oninput="document.getElementById('titleVal').textContent=this.value+' → '+Math.round(this.value*0.85)">
       </div>
       <div class="slider-wrap" style="margin-top:10px;">
         <div class="slider-header"><span>Description Length</span><span id="descVal">150 chars</span></div>
@@ -1166,6 +1181,22 @@
         </label>
       </div>
     </div>
+
+    <div class="modal-section-label">Color Palette (Theme)</div>
+    <div class="swatch-grid" id="palGrid"></div>
+    <div class="pal-tools">
+      <label>Custom <input type="color" id="palCustom" value="#5B4FA1" oninput="RG_applyPalette(this.value)"></label>
+      <button class="btn btn-pause" type="button" onclick="RG_clearPalette()">Reset to Lavender</button>
+    </div>
+    <div class="pal-hint">A color sets the sidebar, buttons, tabs and highlights across the whole dashboard.</div>
+
+    <div class="modal-section-label">Upload Box Background</div>
+    <div class="swatch-grid" id="dzGrid"></div>
+    <div class="pal-tools">
+      <label>Custom <input type="color" id="dzCustom" value="#FFFFFF" oninput="RG_applyDz(this.value)"></label>
+      <button class="btn btn-pause" type="button" onclick="RG_clearDz()">Reset to White</button>
+    </div>
+    <div class="pal-hint">Changes the background of the file upload area (text color adjusts automatically).</div>
 
     <!-- BRANDING: logo upload — replaces the sidebar logo + browser favicon, saved locally -->
     <div class="modal-section-label" style="margin-top:18px;">Your Logo</div>
@@ -3034,9 +3065,9 @@ function buildPrompt(titleLen, descLen, kwCount, platform) {
 Analyze the uploaded design/image carefully and generate Shutterstock-ready metadata.
 Follow these strict rules:
 
-TITLE RULES (max ${titleLen} chars):
+TITLE RULES (target ${Math.round(titleLen * 0.85)} chars, hard max ${titleLen}):
 - Create a natural, professional title.
-- LENGTH CONTROL: the title must be as close as possible to ${titleLen} characters (use 85%-100% of ${titleLen}) and must NEVER exceed ${titleLen} characters. Count characters before answering.
+- LENGTH CONTROL: the title must be EXACTLY ${Math.round(titleLen * 0.85)} characters long (85% of the ${titleLen} limit), give or take 1-2 characters. Do NOT go noticeably shorter or longer than ${Math.round(titleLen * 0.85)} characters. Use meaningful, natural words (never filler or repeated words) and NEVER exceed ${titleLen} characters. Count characters before answering.
 - 100% SEO-friendly: start with the single highest-search-volume keyword (main subject).
 - Include style and design type using terms buyers actually search for.
 - Natural readable sentence, no commas-only keyword dump, no brand names, no special symbols.
@@ -3150,13 +3181,13 @@ Platform: ${platform.toUpperCase()}
 ${platformFocus[platform] || platformFocus.general}
 
 ═══════════════════════════════
-TITLE RULES (max ${titleLen} chars):
+TITLE RULES (target ${Math.round(titleLen * 0.85)} chars, hard max ${titleLen}):
 ═══════════════════════════════
 - 100% SEO-friendly title: start IMMEDIATELY with the single most important, highest-search-volume keyword/subject — this is what search algorithms weight most
 - Place the 2-3 strongest buyer search terms at the very beginning of the title — the most important and most relevant words for this exact design always come first
 - Natural, professional, human-readable sentence — never a robotic keyword dump
 - No brand names, no special symbols or emojis, no quotes, no repeated words
-- LENGTH CONTROL: the title must be as close as possible to ${titleLen} characters (use 85%-100% of ${titleLen}) and must NEVER exceed ${titleLen} characters — count characters before answering. Adapt the amount of detail to fit this length exactly
+- LENGTH CONTROL: the title must be EXACTLY ${Math.round(titleLen * 0.85)} characters long (85% of the ${titleLen} limit), give or take 1-2 characters. Do NOT go noticeably shorter or longer than ${Math.round(titleLen * 0.85)} characters. Use meaningful, natural words (never filler or repeated words) and NEVER exceed ${titleLen} characters — count characters before answering. Adapt the amount of detail to fit this length exactly
 - Include: subject + style (flat/3D/line art/realistic/minimalist/watercolor/etc.) + design type (icon/illustration/vector/pattern/background/etc.)
 - Use buyer-intent, commercially-relevant language a designer or marketer would actually search for
 - Title must exactly match the visible content — zero false claims, zero exaggeration
@@ -5845,6 +5876,79 @@ if (isStandaloneMode()) {
 </script>
 <script>
 restoreSavedSettings();
+</script>
+<script>
+(function(){
+  var PAL = ["#530103", "#180000", "#413529", "#2A2118", "#AD121A", "#78500A", "#C87500", "#AD2E0D", "#132227", "#772510", "#B31E31", "#7C0308", "#024466", "#008A94", "#045B6C", "#00425A", "#B27846", "#515A55", "#39389E", "#287C27", "#7A287C", "#8E287B", "#960202", "#000000"];
+  var root = document.body;
+  function h2r(h){h=h.replace('#','');return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)];}
+  function r2h(r){return '#'+r.map(function(v){v=Math.max(0,Math.min(255,Math.round(v)));return (v<16?'0':'')+v.toString(16);}).join('');}
+  function mix(a,b,t){var A=h2r(a),B=h2r(b);return r2h([A[0]+(B[0]-A[0])*t,A[1]+(B[1]-A[1])*t,A[2]+(B[2]-A[2])*t]);}
+  function lum(h){var c=h2r(h).map(function(v){v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);});return 0.2126*c[0]+0.7152*c[1]+0.0722*c[2];}
+  function setVars(o){for(var k in o) root.style.setProperty(k,o[k]);}
+  function unsetVars(a){a.forEach(function(k){root.style.removeProperty(k);});}
+  var PAL_KEYS=['--accent','--accent2','--accent3','--side1','--side2','--grad','--grad-deep','--deep','--chip','--chip-text','--lilac','--pale-pink','--bg','--bg2','--glow'];
+  var DZ_KEYS=['--dz-bg','--dz-fg','--dz-muted'];
+
+  window.RG_applyPalette=function(hex,save){
+    var dark=document.body.classList.contains('theme-black');
+    var base=hex, light=mix(hex,'#ffffff',0.32), deep=mix(hex,'#000000',0.18);
+    if(lum(hex)<0.01) { light=mix(hex,'#ffffff',0.38); }
+    var v={'--accent':dark?mix(hex,'#ffffff',0.55):base,'--accent3':light,'--side1':light,'--side2':base,
+      '--grad':'linear-gradient(135deg,'+light+' 0%,'+base+' 100%)','--grad-deep':'linear-gradient(135deg,'+base+' 0%,'+light+' 100%)',
+      '--glow':'0 8px 28px '+base+'47'};
+    if(!dark){ v['--deep']=deep; v['--accent2']=deep; v['--chip']=mix(hex,'#ffffff',0.9); v['--chip-text']=deep;
+      v['--lilac']=mix(hex,'#ffffff',0.8); v['--pale-pink']=mix(hex,'#ffffff',0.92);
+      v['--bg']=mix(hex,'#ffffff',0.955); v['--bg2']=mix(hex,'#ffffff',0.9); }
+    setVars(v);
+    if(save!==false) localStorage.setItem('robig_palette',hex);
+    mark('palGrid',hex); var c=document.getElementById('palCustom'); if(c) c.value=hex;
+  };
+  window.RG_clearPalette=function(save){
+    unsetVars(PAL_KEYS); if(save!==false) localStorage.removeItem('robig_palette'); mark('palGrid',null);
+  };
+  window.RG_applyDz=function(hex,save){
+    var l=lum(hex), darkBg=l<0.35;
+    setVars({'--dz-bg':hex,'--dz-fg':darkBg?'#FFFFFF':'#17172B','--dz-muted':darkBg?'rgba(255,255,255,.75)':'#77768A'});
+    if(save!==false) localStorage.setItem('robig_dzbg',hex);
+    mark('dzGrid',hex); var c=document.getElementById('dzCustom'); if(c) c.value=hex;
+  };
+  window.RG_clearDz=function(save){
+    unsetVars(DZ_KEYS); if(save!==false) localStorage.removeItem('robig_dzbg'); mark('dzGrid',null);
+  };
+  function mark(id,hex){
+    var g=document.getElementById(id); if(!g) return;
+    g.querySelectorAll('.swatch').forEach(function(b){b.classList.toggle('active',!!hex && b.dataset.hex.toLowerCase()===hex.toLowerCase());});
+  }
+  function build(id,fn,extra){
+    var g=document.getElementById(id); if(!g) return;
+    var list=(extra||[]).concat(PAL);
+    list.forEach(function(hex){
+      var b=document.createElement('button'); b.type='button'; b.className='swatch'+(lum(hex)>0.8?' sw-light':'');
+      b.style.setProperty('--sw',hex); b.dataset.hex=hex; b.title=hex.toUpperCase();
+      b.setAttribute('aria-label','Color '+hex);
+      b.onclick=function(){fn(hex);}; g.appendChild(b);
+    });
+  }
+  build('palGrid',window.RG_applyPalette,['#5B4FA1']);
+  build('dzGrid',window.RG_applyDz,['#FFFFFF','#F0EAFE']);
+
+  // Picking a theme card in Settings hands control back to that theme
+  var _st=window.setTheme;
+  if(typeof _st==='function'){
+    window.setTheme=function(){
+      var ev=window.event, t=ev&&ev.target&&ev.target.closest&&ev.target.closest('.theme-card');
+      if(t) window.RG_clearPalette();
+      return _st.apply(this,arguments);
+    };
+  }
+
+  // restore saved choices
+  try{
+    var p=localStorage.getItem('robig_palette'); if(p) window.RG_applyPalette(p,false);
+    var d=localStorage.getItem('robig_dzbg'); if(d) window.RG_applyDz(d,false);
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
