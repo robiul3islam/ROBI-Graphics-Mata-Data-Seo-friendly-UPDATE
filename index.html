@@ -638,6 +638,15 @@
   .pal-tools .btn { padding: 7px 16px; font-size: 12.5px; }
   .pal-hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
   @media (max-width: 768px) { .swatch-grid { grid-template-columns: repeat(6, 1fr); } }
+  /* ---------- DRAG MODE: upload area turns fully black ---------- */
+  .dropzone.dragover { background: #000 !important; border-color: var(--lav) !important; color: #fff !important; box-shadow: 0 0 0 4px rgba(142,131,209,.35), var(--shadow-lg) !important; }
+  .dropzone.dragover::before { opacity: 0 !important; }
+  .dropzone.dragover .dz-text h3, .dropzone.dragover p, .dropzone.dragover a { color: #fff !important; }
+  .dropzone.dragover .dz-text p, .dropzone.dragover .dz-icon p, .dropzone.dragover [style*="var(--muted)"] { color: rgba(255,255,255,.75) !important; }
+  .dropzone.dragover .dz-icon .ico { background: rgba(255,255,255,.12) !important; }
+  .dropzone.dragover > * { position: relative; z-index: 1; }
+  .dropzone, .dropzone * { transition-property: background-color, color, border-color, box-shadow, opacity; transition-duration: .2s; }
+  #providerKeyBox .btn { width: 100%; justify-content: center; }
 </style>
 </head>
 <body>
@@ -1108,11 +1117,17 @@
         <option value="grok">xAI Grok</option>
       </select>
     </div>
-    <div style="margin-bottom:12px;padding:12px;border:1px solid rgba(66,133,244,0.4);background:rgba(66,133,244,0.08);border-radius:10px;">
+    <div id="geminiKeyBox" style="margin-bottom:12px;padding:12px;border:1px solid rgba(66,133,244,0.4);background:rgba(66,133,244,0.08);border-radius:10px;">
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-family:'Space Mono',monospace;">GOOGLE GEMINI — FREE API KEY</div>
       <button class="btn btn-generate" style="width:100%;justify-content:center;font-size:13px;padding:10px;" onclick="createGoogleApiKey()">🔗 Create API Key (Google AI Studio)</button>
       <button class="btn btn-export" style="width:100%;justify-content:center;font-size:12px;padding:8px;margin-top:8px;" onclick="pasteApiKeyFromClipboard()">📋 Paste Key from Clipboard &amp; Save</button>
       <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;">১) উপরের বাটনে চাপুন — Google AI Studio খুলবে &nbsp; ২) "Create API key" চাপুন &nbsp; ৩) key কপি করুন &nbsp; ৪) ফিরে এসে "Paste Key" চাপুন</div>
+    </div>
+    <div id="providerKeyBox" style="display:none;margin-bottom:12px;padding:12px;border-radius:14px;background:var(--chip);">
+      <div id="pkbTitle" style="font-size:12.5px;font-weight:700;color:var(--chip-text);margin-bottom:8px;"></div>
+      <button class="btn btn-generate" id="pkbCreate" style="font-size:13px;padding:10px;" onclick="RG_openKeyPage()">🔗 Create API Key</button>
+      <button class="btn btn-export" style="font-size:12px;padding:8px;margin-top:8px;" onclick="RG_pasteKey()">📋 Paste Key from Clipboard &amp; Save</button>
+      <div id="pkbHint" style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;"></div>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:5px;font-family:'Space Mono',monospace;">API KEY</div>
     <input type="password" id="apiKeyInput" placeholder="Enter your API key…" oninput="saveApiKey()">
@@ -3106,7 +3121,7 @@ Never choose categories that are unrelated to the visible image.
 KEYWORD RULES:
 Generate exactly ${kwCount} highly relevant keywords, ranked in 3 tiers (most important first — order matters for search ranking).
 CRITICAL: EVERY keyword MUST be ONE SINGLE WORD only (letters/numbers, no spaces, no phrases, no hyphenated multi-word terms). Examples: "vector", "floral", "pattern", "seamless". NEVER "flower pattern" or "hand drawn".
-All keywords must be 100% SEO-friendly: real buyer search terms, lowercase, no duplicates, no plurals+singular of the same word repeated.
+All keywords must be 100% SEO-friendly: real buyer search terms, lowercase, ZERO duplicates. Every keyword must be a different word: never repeat a word, never use singular AND plural of the same word (e.g. only one of "flower"/"flowers"), never use the same root twice. Before answering, re-read your list; if any word repeats, replace it with a new relevant word so the final list still has exactly ${kwCount} UNIQUE keywords.
 DESIGN MATCH RULE: First look carefully at the design. Put the MOST IMPORTANT and MOST RELEVANT words for THIS exact design at the very beginning of the list (main subject first, then the strongest style/type words), and the less important words at the end.
 RELEVANCE RULE: NEVER use any keyword that does not match what is actually shown in the design. If a word is not visible in, or directly related to, this design, do not use it — even if it is a popular search term.
 
@@ -3207,7 +3222,7 @@ KEYWORD RULES — 3-TIER RANKING STRUCTURE (exactly ${kwCount} keywords):
 ═══════════════════════════════
 Every keyword must be visible, relevant, or directly inferable from the image. This is the MOST IMPORTANT ranking factor — order matters because stock platforms weight earlier keywords higher.
 CRITICAL: EVERY keyword MUST be ONE SINGLE WORD only (no spaces, no phrases, no hyphenated multi-word terms). Examples: "vector", "floral", "pattern", "seamless". NEVER "flower pattern", "flat design" or "hand drawn" — split such ideas into separate single words ("flat", "design", "hand", "drawn" only if each is meaningful on its own, otherwise use a better single word like "handmade" or "illustration").
-All keywords must be 100% SEO-friendly: real buyer search terms, lowercase, no duplicates.
+All keywords must be 100% SEO-friendly: real buyer search terms, lowercase, ZERO duplicates. Every keyword must be a different word: never repeat a word, never use singular AND plural of the same word (e.g. only one of "flower"/"flowers"), never use the same root twice. Before answering, re-read your list; if any word repeats, replace it with a new relevant word so the final list still has exactly ${kwCount} UNIQUE keywords.
 DESIGN MATCH RULE: First look carefully at the design. Put the MOST IMPORTANT and MOST RELEVANT words for THIS exact design at the very beginning of the list (main subject first, then the strongest style/type words), and the less important words at the end.
 RELEVANCE RULE: NEVER use any keyword that does not match what is actually shown in the design. If a word is not visible in, or directly related to, this design, do not use it — even if it is a popular search term.
 
@@ -3221,7 +3236,7 @@ Related style descriptors, color names (only visible colors), composition terms,
 Specific use-case words, industry/niche terms, concept words and highly specific details (all single words, never phrases) that a buyer with a precise need would search for. These capture niche, lower-competition searches that convert well.
 
 Strict keyword requirements:
-- No duplicates (case-insensitive)
+- ZERO duplicates (case-insensitive, and no singular/plural pairs of the same word) — the final list must contain exactly ${kwCount} unique keywords
 - No brand names, no celebrity names, no trademarked terms
 - No colors, objects, or styles that are NOT visible in the image
 - No spam, no misleading or unrelated terms
@@ -3475,14 +3490,39 @@ async function callGrok(apiKey, base64, mimeType, prompt, model) {
   return parseJSON(data.choices?.[0]?.message?.content || '');
 }
 
+// Remove duplicate keywords (case-insensitive, also singular/plural of the same word)
+function RG_dedupeKeywords(arr) {
+  const stem = (w) => {
+    if (w.length > 3) {
+      if (/ies$/.test(w)) return w.slice(0, -3) + 'y';
+      if (/(ss|us|is)$/.test(w)) return w;
+      if (/(ches|shes|xes|zes|sses)$/.test(w)) return w.slice(0, -2);
+      if (/s$/.test(w)) return w.slice(0, -1);
+    }
+    return w;
+  };
+  const seen = new Set(), out = [];
+  for (const k of arr) {
+    if (typeof k !== 'string') { out.push(k); continue; }
+    const t = k.trim().replace(/\s+/g, ' ');
+    if (!t) continue;
+    const key = stem(t.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, ''));
+    if (seen.has(key)) continue;
+    seen.add(key); out.push(t);
+  }
+  return out;
+}
 function parseJSON(text) {
   const clean = text.replace(/```json|```/g, '').trim();
-  try { return JSON.parse(clean); }
+  let obj;
+  try { obj = JSON.parse(clean); }
   catch {
     const match = clean.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
-    throw new Error('Failed to parse AI response as JSON');
+    if (match) obj = JSON.parse(match[0]);
+    else throw new Error('Failed to parse AI response as JSON');
   }
+  if (obj && Array.isArray(obj.keywords)) obj.keywords = RG_dedupeKeywords(obj.keywords);
+  return obj;
 }
 
 // ===== RENDER RESULT =====
@@ -5948,6 +5988,49 @@ restoreSavedSettings();
     var p=localStorage.getItem('robig_palette'); if(p) window.RG_applyPalette(p,false);
     var d=localStorage.getItem('robig_dzbg'); if(d) window.RG_applyDz(d,false);
   }catch(e){}
+})();
+</script>
+<script>
+(function(){
+  var PK = {
+    openai:     {name:'OpenAI', url:'https://platform.openai.com/api-keys', prefix:'sk-',
+                 hint:'১) বাটনে চাপুন — OpenAI Platform খুলবে (লগইন করুন)  ২) "Create new secret key" চাপুন  ৩) key কপি করুন (একবারই দেখা যায়)  ৪) ফিরে এসে "Paste Key" চাপুন। মনে রাখবেন: OpenAI API-তে billing/credit লাগে।'},
+    openrouter: {name:'OpenRouter', url:'https://openrouter.ai/keys', prefix:'sk-or-',
+                 hint:'১) বাটনে চাপুন — OpenRouter Keys পেজ খুলবে  ২) "Create Key" চাপুন  ৩) key কপি করুন  ৪) ফিরে এসে "Paste Key" চাপুন। কিছু মডেল ফ্রি পাওয়া যায়।'},
+    grok:       {name:'xAI Grok', url:'https://console.x.ai', prefix:'xai-',
+                 hint:'১) বাটনে চাপুন — xAI Console খুলবে (লগইন করুন)  ২) API Keys থেকে "Create API key" চাপুন  ৩) key কপি করুন  ৪) ফিরে এসে "Paste Key" চাপুন। xAI API-তে credit লাগতে পারে।'},
+    mistral:    {name:'Mistral AI', url:'https://console.mistral.ai/api-keys', prefix:'',
+                 hint:'১) বাটনে চাপুন — Mistral Console খুলবে (লগইন করুন)  ২) "Create new key" চাপুন  ৩) key কপি করুন  ৪) ফিরে এসে "Paste Key" চাপুন।'},
+    groq:       {name:'Groq Cloud', url:'https://console.groq.com/keys', prefix:'gsk_',
+                 hint:'১) বাটনে চাপুন — Groq Console খুলবে (লগইন করুন)  ২) "Create API Key" চাপুন  ৩) key কপি করুন  ৪) ফিরে এসে "Paste Key" চাপুন। Groq-এ ফ্রি প্ল্যান আছে।'}
+  };
+  function cur(){ var m=document.getElementById('modalProvider'); return m?m.value:'gemini'; }
+  window.RG_updateKeyBox=function(){
+    var p=cur(), g=document.getElementById('geminiKeyBox'), b=document.getElementById('providerKeyBox');
+    if(!g||!b) return;
+    if(p==='gemini'||!PK[p]){ g.style.display=''; b.style.display='none'; return; }
+    g.style.display='none'; b.style.display='';
+    document.getElementById('pkbTitle').textContent=PK[p].name+' — API KEY তৈরি করুন';
+    document.getElementById('pkbCreate').textContent='🔗 Create API Key ('+PK[p].name+')';
+    document.getElementById('pkbHint').textContent=PK[p].hint;
+  };
+  window.RG_openKeyPage=function(){
+    var d=PK[cur()]; if(!d) return;
+    window.open(d.url,'_blank','noopener');
+    showToast('🔗 '+d.name+'-এর key পেজ খুলেছে — key তৈরি করে কপি করুন, তারপর ফিরে এসে Paste চাপুন');
+  };
+  window.RG_pasteKey=async function(){
+    var p=cur(), d=PK[p], input=document.getElementById('apiKeyInput'), text='';
+    try{ text=((await navigator.clipboard.readText())||'').trim(); }
+    catch(e){ if(input) input.focus(); showToast('⚠ Clipboard পড়া যায়নি — key বক্সে ক্লিক করে Ctrl+V দিয়ে paste করুন'); return; }
+    if(!text){ showToast('⚠ Clipboard খালি — আগে key কপি করুন'); return; }
+    if(d&&d.prefix&&text.indexOf(d.prefix)!==0){ showToast('⚠ এটা '+d.name+' key মনে হচ্ছে না ('+d.prefix+'… দিয়ে শুরু হয়)'); return; }
+    input.value=text; saveApiKey(); addKeyToList();
+    showToast('✅ '+(d?d.name:'')+' API key save হয়েছে ও list-এ যুক্ত হয়েছে');
+  };
+  var _u=window.updateModalKey;
+  if(typeof _u==='function'){ window.updateModalKey=function(){ var r=_u.apply(this,arguments); RG_updateKeyBox(); return r; }; }
+  RG_updateKeyBox();
 })();
 </script>
 </body>
