@@ -839,7 +839,7 @@
 
     <!-- Drop Zone -->
     <div class="dropzone" id="dropzone" title="ধাপ ২: এখানে ক্লিক করুন বা ছবি drag করে আপলোড করুন" onclick="document.getElementById('fileInput').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="this.classList.remove('dragover')">
-      <input type="file" id="fileInput" multiple accept="image/*,.eps,.pdf,.ai" onchange="handleFiles(this.files)">
+      <input type="file" id="fileInput" multiple accept="image/*,.eps,.pdf,.ai" onchange="sourceDirHandle=null;handleFiles(this.files)">
       <div id="previewGrid" class="preview-grid" style="width:100%;padding:12px;display:none;"></div>
       <!-- Upload Loading Overlay -->
       <div class="upload-loading" id="uploadLoading">
@@ -857,6 +857,8 @@
         <div class="dz-text" style="margin-top:16px;">
           <h3>Drag & drop files here, or <a>click to select</a></h3>
           <p>Supported: JPG, PNG, GIF, MP4, MOV, EPS, AI, PDF · Large batches supported</p>
+          <button type="button" id="pickFolderBtn" onclick="event.stopPropagation();pickSourceFolder()" style="margin-top:12px;padding:10px 18px;border:0;border-radius:999px;background:#E2F6EC;color:#187A52;font-weight:700;font-size:13px;cursor:pointer;">📂 Select Folder (CSV auto-save in same folder)</button>
+          <div id="folderInfo" style="font-size:11px;margin-top:6px;color:#187A52;"></div>
         </div>
       </div>
     </div>
@@ -2257,7 +2259,74 @@ function handleDragOver(e) {
 function handleDrop(e) {
   e.preventDefault();
   document.getElementById('dropzone').classList.remove('dragover');
+  sourceDirHandle = null;
+  const it = e.dataTransfer.items && e.dataTransfer.items[0];
+  if (it && it.kind === 'file' && it.getAsFileSystemHandle) {
+    it.getAsFileSystemHandle().then(async h => {
+      if (h && h.kind === 'directory') { await useSourceFolder(h); }
+      else handleFiles(e.dataTransfer.files);
+    }).catch(() => handleFiles(e.dataTransfer.files));
+    return;
+  }
   handleFiles(e.dataTransfer.files);
+}
+
+// ===== SOURCE FOLDER: read images from folder, save CSV back into same folder =====
+let sourceDirHandle = null;
+const FOLDER_EXTS = ['jpg','jpeg','png','gif','webp','bmp','svg','mp4','mov','eps','ai','pdf'];
+async function pickSourceFolder() {
+  if (!window.showDirectoryPicker) {
+    showToast('⚠️ Folder select শুধু Chrome / Edge (Desktop) এ কাজ করে');
+    return;
+  }
+  try {
+    const h = await window.showDirectoryPicker({ mode: 'readwrite' });
+    await useSourceFolder(h);
+  } catch (err) {
+    if (err && err.name !== 'AbortError') showToast('⚠️ Folder open হয়নি: ' + err.message);
+  }
+}
+async function useSourceFolder(h) {
+  try {
+    if (h.requestPermission) {
+      const p = await h.requestPermission({ mode: 'readwrite' });
+      if (p !== 'granted') { showToast('⚠️ Folder write permission দিন, না হলে CSV folder এ save হবে না'); }
+    }
+    const files = [];
+    for await (const [name, entry] of h.entries()) {
+      if (entry.kind !== 'file') continue;
+      const ext = name.split('.').pop().toLowerCase();
+      if (FOLDER_EXTS.indexOf(ext) === -1) continue;
+      files.push(await entry.getFile());
+    }
+    if (files.length === 0) { showToast('⚠️ এই folder এ কোনো supported ফাইল নেই'); return; }
+    files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    sourceDirHandle = h;
+    const info = document.getElementById('folderInfo');
+    if (info) info.textContent = '📂 ' + h.name + ' — ' + files.length + ' files · CSV এই folder এ auto-save হবে';
+    showToast('📂 ' + files.length + ' files loaded from "' + h.name + '"');
+    handleFiles(files);
+  } catch (err) {
+    showToast('⚠️ Folder read error: ' + err.message);
+  }
+}
+async function saveCsvToSourceFolder(fname, text) {
+  if (!sourceDirHandle) return false;
+  try {
+    if (sourceDirHandle.queryPermission) {
+      let p = await sourceDirHandle.queryPermission({ mode: 'readwrite' });
+      if (p !== 'granted') p = await sourceDirHandle.requestPermission({ mode: 'readwrite' });
+      if (p !== 'granted') return false;
+    }
+    const fh = await sourceDirHandle.getFileHandle(fname, { create: true });
+    const w = await fh.createWritable();
+    await w.write(new Blob([text], { type: 'text/csv;charset=utf-8;' }));
+    await w.close();
+    return true;
+  } catch (err) {
+    console.warn('Save to folder failed', err);
+    return false;
+  }
 }
 
 async function handleFiles(fileList) {
@@ -4203,10 +4272,20 @@ function dismissRecoveryBanner() {
   clearInProgressSnapshot();
 }
 
-function exportCSV() {
+async function exportCSV() {
   if (results.length === 0) { showToast('⚠️ No results to export'); return; }
   const csv = buildCSV();
   const fname = (outputFilename || 'robi-graphics') + '.csv';
+  if (sourceDirHandle) {
+    const ok = await saveCsvToSourceFolder(fname, '\uFEFF' + csv);
+    if (ok) {
+      stats.csvExports++;
+      localStorage.setItem('robig_stats', JSON.stringify(stats));
+      showToast('📊 ' + fname + ' saved in folder "' + sourceDirHandle.name + '"');
+      return;
+    }
+    showToast('⚠️ Folder এ save হয়নি — normal download হচ্ছে');
+  }
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
