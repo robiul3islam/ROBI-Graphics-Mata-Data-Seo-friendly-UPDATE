@@ -779,6 +779,19 @@
       </div>
     </div>
 
+    <div class="sidebar-section" id="fpSettings" style="display:none;">
+      <div class="sidebar-label">🎨 Freepik CSV</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px;">Format: <code>filename;title;tags;is_ai;ai_prompt;ai_model;people_count</code></div>
+      <select id="fpIsAI" onchange="fpOnSettingChange()">
+        <option value="no">is_ai = no (Non-AI / নিজের ডিজাইন)</option>
+        <option value="yes">is_ai = yes (AI Generated)</option>
+      </select>
+      <div id="fpAiModelWrap" style="display:none;margin-top:8px;">
+        <input type="text" id="fpAiModel" placeholder="ai_model (যেমন: Midjourney v7, Flux, DALL·E 3)" oninput="fpOnSettingChange()" style="width:100%;font-size:12px;padding:6px 8px;">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">ai_prompt অটো তৈরি হবে (AI Recreation Prompt থেকে)</div>
+      </div>
+    </div>
+
     <div class="sidebar-section">
       <div class="sidebar-label">Custom Prompt</div>
       <select>
@@ -1576,6 +1589,8 @@ function saveToHistory(sessionResults) {
       keywords: r.metadata?.keywords || [],
       category: r.metadata?.category || '',
       category_number: r.metadata?.category_number || '',
+      people_count: r.metadata?.people_count ?? 0,
+      fpIsAI: fpIsAI(), aiPrompt: r.metadata?.recreation_prompt || '', aiModel: fpAiModel(),
       error: r.metadata?.error || null,
       previewSrc: r.previewSrc || null,
     }))
@@ -1756,6 +1771,9 @@ function buildCSVFromHistory(session) {
   } else if (platform === 'shutterstock') {
     headers = ['filename','description','keywords','categories','editorial','mature_content','illustration'];
     rows = session.items.map(r => [csvQ(r.filename), csvQ(r.description), csvQ((r.keywords||[]).join(',')), csvQ(r.category||''), csvQ('no'), csvQ('no'), csvQ('no')]);
+  } else if (platform === 'freepik') {
+    return FREEPIK_HEADERS.join(';') + '\n' + session.items.filter(r => !r.error)
+      .map(r => fpRow(r.filename, r.title, r.keywords, !!r.fpIsAI, r.aiPrompt, r.aiModel, r.people_count)).join('\n') + '\n';
   } else {
     headers = ['Filename','Title','Description','Keywords','Category','Category Number'];
     rows = session.items.map(r => [csvQ(r.filename), csvQ(r.title), csvQ(r.description), csvQ((r.keywords||[]).join(', ')), csvQ(r.category||''), csvQ(String(r.category_number||''))]);
@@ -1768,7 +1786,7 @@ function downloadHistoryCSV(si) {
   if (!session) return;
   const csv = buildCSVFromHistory(session);
   const fname = 'history-' + session.id + '.csv';
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob([csvBom(session.platform) + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = fname;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -1785,7 +1803,7 @@ async function downloadHistoryZip(si) {
   }
   const zip = new JSZip();
   const csv = buildCSVFromHistory(session);
-  zip.file('metadata.csv', '\uFEFF' + csv);
+  zip.file('metadata.csv', csvBom(session.platform) + csv);
   const imgFolder = zip.folder('images');
   session.items.forEach(item => {
     if (item.previewSrc && item.previewSrc.startsWith('data:')) {
@@ -2232,6 +2250,7 @@ function setTab(el, name) {
   document.querySelectorAll('.ptab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   currentPlatform = name;
+  const fp = document.getElementById('fpSettings'); if (fp) fp.style.display = (name === 'freepik') ? 'block' : 'none';
 }
 
 // ===== ADOBE CATEGORY MAPPING =====
@@ -3189,6 +3208,66 @@ async function autoRetryUntilDone() {
 }
 
 function buildPrompt(titleLen, descLen, kwCount, platform) {
+
+  // ===== DEDICATED FREEPIK PROMPT (SEO-optimised, matches Freepik CSV format) =====
+  if (platform === 'freepik') {
+    const isAI = (typeof fpIsAI === 'function') ? fpIsAI() : false;
+    return `You are an elite Freepik contributor SEO specialist. Your metadata must make this asset rank at the TOP of Freepik search results and match exactly what Freepik's bulk-upload CSV expects.
+
+Analyze the uploaded file carefully. Identify the main subject, secondary elements, art style, visible colors, composition, mood and realistic use cases. Everything you write must be 100% visible or directly inferable — never invent objects, colors or styles.
+
+═══════════════════════════════
+TITLE (max ${titleLen} chars, aim for about ${Math.round(titleLen * 0.85)}):
+═══════════════════════════════
+- ONE natural English phrase/sentence in sentence case, e.g. "Blue flowers in a glass vase" — NOT a keyword dump, NO comma lists
+- Begin with the main subject (highest-search-volume term), then add style / key detail / context
+- Include style + type when relevant (flat, 3D, line art, watercolor, vector, illustration, background, icon set, mockup, pattern, photo)
+- Use words a Freepik buyer would actually search; every word must add value
+- NO brand names, trademarks, celebrity names, file names, numbers-only, emojis, quotes, semicolons (;) or special symbols
+- Must exactly match what is visible
+
+═══════════════════════════════
+TAGS / KEYWORDS (exactly ${kwCount}):
+═══════════════════════════════
+- Returned in the "keywords" array; they become the comma-separated "tags" column
+- ORDER = RANKING WEIGHT. Put the strongest first:
+  1) Core (first ~35%): main subject, primary style, file type (vector, photo, illustration, background...)
+  2) Supporting (next ~35%): visible colors, mood, composition, technique, secondary objects, season/occasion
+  3) Long-tail (last ~30%): 2-3 word buyer phrases, niche use cases (social media post, brand design, print template)
+- Single words FIRST, then 2-3 word phrases after them
+- Every tag unique (no singular/plural duplicates, no case duplicates), lowercase, English only
+- NO commas or semicolons inside a tag, NO brand/trademark/people names, NO colors or objects that are not visible, NO spam or unrelated terms
+- Every tag must be something this exact file could legitimately rank for
+
+═══════════════════════════════
+people_count:
+═══════════════════════════════
+- Integer = number of people (human figures, real or illustrated) clearly visible in the file. 0 if none (objects, animals, robots, landscapes, patterns, icons without humans).
+
+═══════════════════════════════
+DESCRIPTION (max ${descLen} chars) — for contributor reference only, not part of the Freepik CSV:
+═══════════════════════════════
+- 1-2 natural sentences describing subject, style, colors, composition and use cases
+
+${isAI ? `═══════════════════════════════
+AI PROMPT (recreation_prompt) — goes to the "ai_prompt" column:
+═══════════════════════════════
+- Write a clear, detailed English prompt (single paragraph, no line breaks, no semicolons) a user could paste into an AI image generator to recreate this image: subject, appearance, style, palette, composition, lighting, mood.` : `═══════════════════════════════
+recreation_prompt: short reverse-engineered AI prompt for reference only (not used in the Freepik CSV because the file is non-AI).
+═══════════════════════════════`}
+
+Return ONLY this exact valid JSON — no markdown, no explanation:
+{
+  "title": "title here",
+  "description": "description here",
+  "keywords": ["tag1", "tag2", "...", "tag${kwCount}"],
+  "people_count": 0,
+  "category": "Freepik category name",
+  "category_number": 1,
+  "recreation_prompt": "detailed AI image generation prompt"
+}`;
+  }
+
   // ===== DEDICATED SHUTTERSTOCK PROMPT (strict rules) =====
   if (platform === 'shutterstock') {
     return `You are a professional Shutterstock Metadata Expert.
@@ -3765,6 +3844,7 @@ function renderResult(item, idx) {
         <div class="result-field-label" style="color:#ffc107;">🎨 AI Recreation Prompt (CSV-তে যাবে না) <button class="btn-icon-mini" onclick="copyField(${idx},'recreation_prompt')" title="Copy Recreation Prompt">📋</button></div>
         <div class="result-field-text" style="color:var(--muted);font-size:12px;">${md.recreation_prompt}</div>
       </div>` : ''}
+      ${currentPlatform === 'freepik' ? `<div class="result-field"><span class="cat-badge">👥 people_count: ${parseInt(md.people_count,10)||0}</span> <span class="cat-badge">${fpIsAI() ? '🤖 is_ai: yes' + (fpAiModel() ? ' · ' + fpAiModel() : '') : 'is_ai: no'}</span></div>` : ''}
       <div class="result-meta">
         <span>Title: <strong class="${titleWarn?'warn':''}">${titleLen} chars</strong></span>
         <span>Desc: <strong class="${descWarn?'warn':''}">${descLen} chars</strong></span>
@@ -4116,14 +4196,12 @@ function buildCSV(platformOverride) {
       csvQ('no'), csvQ('no'), csvQ('no')
     ]);
   } else if (platform === 'freepik') {
-    headers = ['Filename','Title','Description','Keywords','Category'];
-    rows = results.map(r => [
-      csvQ(applyExtension(r.file.name)),
-      csvQ(r.metadata.title||''),
-      csvQ(r.metadata.description||''),
-      csvQ((r.metadata.keywords||[]).join(', ')),
-      csvQ(catOn ? (r.metadata.category || '') : '')
-    ]);
+    const ai = fpIsAI(), model = fpAiModel();
+    return FREEPIK_HEADERS.join(';') + '\n' + results
+      .filter(r => r.metadata && !r.metadata.error)
+      .map(r => fpRow(applyExtension(r.file.name), r.metadata.title, r.metadata.keywords, ai,
+                      r.metadata.recreation_prompt || r.metadata.ai_prompt || '', model, r.metadata.people_count))
+      .join('\n') + '\n';
   } else if (platform === 'getty' || platform === 'istock') {
     headers = ['Filename','Title','Description','Keywords','Category Number'];
     rows = results.map(r => [
@@ -4169,6 +4247,49 @@ function buildCSV(platformOverride) {
     });
   }
   return [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+}
+
+// ===== FREEPIK CSV (semicolon format: filename;title;tags;is_ai;ai_prompt;ai_model;people_count) =====
+const FREEPIK_HEADERS = ['filename','title','tags','is_ai','ai_prompt','ai_model','people_count'];
+function csvBom(platform) { return platform === 'freepik' ? '' : '\uFEFF'; } // Freepik CSV: no BOM (keeps header "filename" clean)
+function fpCell(v) {
+  v = String(v == null ? '' : v).replace(/\r?\n/g, ' ').trim();
+  return /[;"]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+function fpIsAI() { const el = document.getElementById('fpIsAI'); return el ? el.value === 'yes' : false; }
+function fpAiModel() { const el = document.getElementById('fpAiModel'); return el ? el.value.trim() : ''; }
+function fpOnSettingChange() {
+  const yes = fpIsAI();
+  const m = document.getElementById('fpAiModelWrap'); if (m) m.style.display = yes ? 'block' : 'none';
+  try { localStorage.setItem('robig_fp', JSON.stringify({ ai: yes ? 'yes' : 'no', model: fpAiModel() })); } catch(e) {}
+}
+function fpRestore() {
+  try {
+    const d = JSON.parse(localStorage.getItem('robig_fp') || 'null'); if (!d) return;
+    const a = document.getElementById('fpIsAI'), m = document.getElementById('fpAiModel');
+    if (a) a.value = d.ai || 'no'; if (m) m.value = d.model || '';
+  } catch(e) {}
+  fpOnSettingChange();
+}
+function fpTags(keywords) {
+  // comma separated, NO spaces after comma, unique, no semicolons
+  const seen = new Set(), out = [];
+  (keywords || []).forEach(k => {
+    const t = String(k).replace(/[;,]/g, ' ').replace(/\s+/g, ' ').trim();
+    const key = t.toLowerCase();
+    if (t && !seen.has(key)) { seen.add(key); out.push(t); }
+  });
+  return out.join(',');
+}
+function fpRow(filename, title, keywords, isAI, aiPrompt, aiModel, people) {
+  const n = parseInt(people, 10);
+  return [
+    fpCell(filename), fpCell(title), fpCell(fpTags(keywords)),
+    isAI ? 'yes' : 'no',
+    isAI ? fpCell(aiPrompt) : '',
+    isAI ? fpCell(aiModel) : '',
+    String(isNaN(n) || n < 0 ? 0 : n)
+  ].join(';');
 }
 
 function csvQ(str) {
@@ -4277,7 +4398,7 @@ async function exportCSV() {
   const csv = buildCSV();
   const fname = (outputFilename || 'robi-graphics') + '.csv';
   if (sourceDirHandle) {
-    const ok = await saveCsvToSourceFolder(fname, '\uFEFF' + csv);
+    const ok = await saveCsvToSourceFolder(fname, csvBom(currentPlatform) + csv);
     if (ok) {
       stats.csvExports++;
       localStorage.setItem('robig_stats', JSON.stringify(stats));
@@ -4286,7 +4407,7 @@ async function exportCSV() {
     }
     showToast('⚠️ Folder এ save হয়নি — normal download হচ্ছে');
   }
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob([csvBom(currentPlatform) + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = fname;
@@ -4369,7 +4490,7 @@ async function downloadAllPlatformsCSV() {
     const zip = new JSZip();
     for (const p of ALL_PLATFORMS_FOR_EXPORT) {
       const csv = buildCSV(p.key);
-      zip.file(`${p.file}.csv`, '\uFEFF' + csv);
+      zip.file(`${p.file}.csv`, csvBom(p.key) + csv);
     }
     const zipFname = (outputFilename || 'robi-graphics') + '-all-platforms.zip';
     const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
@@ -4406,7 +4527,7 @@ async function downloadZip() {
     const zip = new JSZip();
     const csv = buildCSV();
     const csvFname = (outputFilename || 'robi-graphics') + '.csv';
-    zip.file(csvFname, '\uFEFF' + csv);
+    zip.file(csvFname, csvBom(currentPlatform) + csv);
     const imgFolder = zip.folder('images');
     for (const item of results) {
       const f = item.file;
@@ -6070,6 +6191,7 @@ if (isStandaloneMode()) {
 </script>
 <script>
 restoreSavedSettings();
+try { fpRestore(); } catch(e) {}
 </script>
 <script>
 (function(){
